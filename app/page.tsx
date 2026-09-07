@@ -720,12 +720,18 @@ export default function Home() {
           <div className="metrics" aria-live="polite">
             <div>
               <span>
-                {config.response === 'linkwitz'
-                  ? 'Actual −6 dB point'
-                  : 'Actual −3 dB point'}
+                {config.response === 'bessel'
+                  ? 'Requested / actual −3 dB cutoff'
+                  : config.response === 'linkwitz'
+                    ? 'Actual −6 dB point'
+                    : 'Actual −3 dB point'}
               </span>
               <strong>
-                {allValid && actualReference ? fmt(actualReference, 'Hz') : '—'}
+                {allValid && actualReference
+                  ? config.response === 'bessel'
+                    ? `${fmt(fc, 'Hz')} / ${fmt(actualReference, 'Hz')}`
+                    : fmt(actualReference, 'Hz')
+                  : '—'}
               </strong>
             </div>
             <div>
@@ -763,11 +769,13 @@ export default function Home() {
             <div className="response-note">
               {config.response === 'custom'
                 ? 'Custom Q sets each section’s pole frequency. The overall −3 dB cutoff is calculated separately.'
-                : config.response === 'chebyshev'
-                  ? 'Chebyshev frequency is the ripple edge. The graph uses unity DC/high-frequency gain; ripple peaks lie above 0 dB.'
-                  : config.response === 'linkwitz'
-                    ? `Linkwitz–Riley is −6.02 dB at crossover. Overall −3 dB point: ${actualCutoff ? fmt(actualCutoff, 'Hz') : '—'}.`
-                    : 'For higher orders, section Q values and pole frequencies are derived from the complete response.'}{' '}
+                : config.response === 'bessel'
+                  ? 'Bessel uses the requested value as the overall −3 dB cutoff. Section pole frequencies differ from the cutoff by design.'
+                  : config.response === 'chebyshev'
+                    ? 'Chebyshev frequency is the ripple edge. The graph uses unity DC/high-frequency gain; ripple peaks lie above 0 dB.'
+                    : config.response === 'linkwitz'
+                      ? `Linkwitz–Riley is −6.02 dB at crossover. Overall −3 dB point: ${actualCutoff ? fmt(actualCutoff, 'Hz') : '—'}.`
+                      : 'For higher orders, section Q values and pole frequencies are derived from the complete response.'}{' '}
               All plotted gains are relative to DC/high-frequency gain.
             </div>
           )}
@@ -801,7 +809,13 @@ export default function Home() {
                       <div>
                         <h3>Section {i + 1}</h3>
                         <p>
-                          Target f₀ <b>{fmt(r.target.f0, 'Hz')}</b>{' '}
+                          {config.response === 'bessel' && (
+                            <>
+                              Filter cutoff <b>{fmt(fc, 'Hz')}</b>{' '}
+                              <span>·</span>{' '}
+                            </>
+                          )}
+                          Stage pole f₀ <b>{fmt(r.target.f0, 'Hz')}</b>{' '}
                           <span>·</span> Q <b>{r.target.q.toFixed(5)}</b>
                         </p>
                       </div>

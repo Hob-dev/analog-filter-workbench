@@ -78,6 +78,22 @@ test('Bessel is magnitude-normalized at -3 dB; HP uses reciprocal pole frequenci
   near(prototype(2, 'bessel', 1, 'lowpass')[0].f0, 1.272019649514069);
   near(prototype(2, 'bessel', 1, 'highpass')[0].f0, 1 / 1.272019649514069);
 });
+test('38 kHz second-order Bessel MFB high-pass retains its requested cutoff', () => {
+  const requestedCutoff = 38e3;
+  const [target] = prototype(2, 'bessel', requestedCutoff, 'highpass');
+  near(target.f0, requestedCutoff / 1.272019649514069);
+  near(cutoff([target], 'highpass'), requestedCutoff);
+
+  const componentDefaults = defaults('mfb', 'highpass', target.q);
+  const values = solveResistors('mfb', 'highpass', target, {
+    c1: parseValue(componentDefaults.c1),
+    c2: parseValue(componentDefaults.c2),
+    c3: parseValue(componentDefaults.c3),
+  });
+  const stage = analyze('mfb', 'highpass', values);
+  near(stage.f0, target.f0);
+  near(cutoff([stage], 'highpass'), requestedCutoff);
+});
 test('Linkwitz-Riley gives -6.02 dB, including doubled real-pole orders', () => {
   for (const n of ORDERS)
     for (const kind of ['lowpass', 'highpass']) {
