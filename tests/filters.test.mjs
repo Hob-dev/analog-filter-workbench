@@ -177,6 +177,33 @@ test('Filtering_03 previously validated HP and LP stages', () => {
   near(l.f0, 39.39671896375815);
   near(l.q, 1.3116240179691);
 });
+test('Sallen–Key gain is included in section synthesis and analysis', () => {
+  const target = { f0: 1000, q: 0.7071067811865476 };
+  for (const kind of ['lowpass', 'highpass']) {
+    const values = solveResistors(
+      'sk',
+      kind,
+      target,
+      { c1: 300e-9, c2: 10e-9, c3: 0 },
+      1.5,
+    );
+    const stage = analyze('sk', kind, values, 1.5);
+    near(stage.f0, target.f0);
+    near(stage.q, target.q);
+    near(stage.gain, 1.5);
+    const capacitors = solveCapacitors(
+      'sk',
+      kind,
+      target,
+      { r1: values.r1, r2: values.r2, r3: 0 },
+      1.5,
+    );
+    const reverse = analyze('sk', kind, capacitors, 1.5);
+    near(reverse.f0, target.f0);
+    near(reverse.q, target.q);
+    near(reverse.gain, 1.5);
+  }
+});
 test('MFB gain follows actual resistor/capacitor ratios', () => {
   const a = analyze('mfb', 'lowpass', {
     r1: 10e3,

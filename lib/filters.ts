@@ -173,34 +173,68 @@ export function requiredKeys(topology: Topology, kind: Kind): (keyof Values)[] {
     : ['c1', 'c2', 'c3', 'r1', 'r2'];
 }
 
+function positiveQuadraticRoot(
+  a: number,
+  b: number,
+  c: number,
+  message: string,
+) {
+  if (a === 0) {
+    const root = -c / b;
+    if (Number.isFinite(root) && root > 0) return root;
+    throw new Error(message);
+  }
+  const discriminant = b * b - 4 * a * c;
+  if (discriminant < -1e-12 * Math.max(b * b, Math.abs(4 * a * c)))
+    throw new Error(message);
+  const sqrt = Math.sqrt(Math.max(0, discriminant));
+  const roots = [(-b - sqrt) / (2 * a), (-b + sqrt) / (2 * a)]
+    .filter((root) => Number.isFinite(root) && root > 0)
+    .sort((x, y) => x - y);
+  if (!roots.length) throw new Error(message);
+  return roots[0];
+}
+
 export function solveResistors(
   topology: Topology,
   kind: Kind,
   target: Target,
   caps: Pick<Values, 'c1' | 'c2' | 'c3'>,
+  stageGain = 1,
 ): Values {
   const { c1, c2, c3 } = caps,
     w = 2 * Math.PI * positive(target.f0, 'Pole frequency'),
-    q = positive(target.q, 'Q');
+    q = positive(target.q, 'Q'),
+    gain = positive(stageGain, 'Stage gain');
+  if (topology === 'sk' && gain < 1)
+    throw new Error('Sallen–Key gain K must be at least 1.');
   positive(c1, 'C1');
   positive(c2, 'C2');
   let r1 = 0,
     r2 = 0,
     r3 = 0;
   if (topology === 'sk' && kind === 'highpass') {
-    r1 = 1 / (w * q * (c1 + c2));
-    r2 = (q * (c1 + c2)) / (w * c1 * c2);
+    const product = 1 / (w * w * c1 * c2),
+      damping = 1 / (w * q);
+    r1 = positiveQuadraticRoot(
+      c1 + c2,
+      -damping,
+      c2 * (1 - gain) * product,
+      'This capacitor ratio and gain cannot produce the requested Sallen–Key Q.',
+    );
+    r2 = product / r1;
   } else if (topology === 'sk') {
-    const p = 1 / (w * w * c1 * c2),
-      sum = 1 / (w * q * c2),
-      disc = sum * sum - 4 * p;
-    if (disc < -1e-10 * sum * sum)
-      throw new Error(
-        `This Q needs C1/C2 ≥ ${Number((4 * q * q).toPrecision(5))}. Increase feedback C1 or reduce shunt C2.`,
-      );
-    const delta = Math.sqrt(Math.max(0, disc));
-    r2 = (sum + delta) / 2;
-    r1 = p / r2;
+    const product = 1 / (w * w * c1 * c2),
+      damping = 1 / (w * q);
+    r1 = positiveQuadraticRoot(
+      c2 + c1 * (1 - gain),
+      -damping,
+      c2 * product,
+      gain === 1
+        ? `This Q needs C1/C2 ≥ ${Number((4 * q * q).toPrecision(5))}. Increase feedback C1 or reduce shunt C2.`
+        : 'This capacitor ratio and gain cannot produce the requested Sallen–Key Q.',
+    );
+    r2 = product / r1;
   } else if (kind === 'lowpass') {
     // Unity-magnitude inverting MFB: R1 = R2.
     const p = 1 / (w * w * c1 * c2),
@@ -224,7 +258,12 @@ export function solveResistors(
   return values;
 }
 
-export function analyze(topology: Topology, kind: Kind, values: Values): Stage {
+export function analyze(
+  topology: Topology,
+  kind: Kind,
+  values: Values,
+  stageGain = 1,
+): Stage {
   for (const key of requiredKeys(topology, kind))
     positive(values[key], key.toUpperCase());
   const { r1, r2, r3, c1, c2, c3 } = values;
@@ -232,8 +271,13 @@ export function analyze(topology: Topology, kind: Kind, values: Values): Stage {
     damping = 0,
     gain = 1;
   if (topology === 'sk') {
+    gain = positive(stageGain, 'Stage gain');
+    if (gain < 1) throw new Error('Sallen–Key gain K must be at least 1.');
     tau = Math.sqrt(r1 * r2 * c1 * c2);
-    damping = kind === 'lowpass' ? c2 * (r1 + r2) : r1 * (c1 + c2);
+    damping =
+      kind === 'lowpass'
+        ? c2 * (r1 + r2) + c1 * r1 * (1 - gain)
+        : r1 * (c1 + c2) + r2 * c2 * (1 - gain);
   } else if (kind === 'lowpass') {
     gain = -r2 / r1;
     tau = Math.sqrt(r2 * r3 * c1 * c2);
@@ -271,28 +315,41 @@ export function solveCapacitors(
   kind: Kind,
   target: Target,
   resistors: Pick<Values, 'r1' | 'r2' | 'r3'>,
+  stageGain = 1,
 ): Values {
   const { r1, r2, r3 } = resistors,
     w = 2 * Math.PI * positive(target.f0, 'Pole frequency'),
-    q = positive(target.q, 'Q');
+    q = positive(target.q, 'Q'),
+    gain = positive(stageGain, 'Stage gain');
+  if (topology === 'sk' && gain < 1)
+    throw new Error('Sallen–Key gain K must be at least 1.');
   positive(r1, 'R1');
   positive(r2, 'R2');
   let c1 = 0,
     c2 = 0,
     c3 = 0;
   if (topology === 'sk' && kind === 'lowpass') {
-    c2 = 1 / (w * q * (r1 + r2));
-    c1 = (q * (r1 + r2)) / (w * r1 * r2);
+    const product = 1 / (w * w * r1 * r2),
+      damping = 1 / (w * q);
+    c1 = positiveQuadraticRoot(
+      r1 * (1 - gain),
+      -damping,
+      (r1 + r2) * product,
+      'This resistor ratio and gain cannot produce the requested Sallen–Key Q.',
+    );
+    c2 = product / c1;
   } else if (topology === 'sk') {
-    const sum = 1 / (w * q * r1),
-      p = 1 / (w * w * r1 * r2),
-      disc = sum * sum - 4 * p;
-    if (disc < -1e-10 * sum * sum)
-      throw new Error(
-        `This Q needs R2/R1 ≥ ${Number((4 * q * q).toPrecision(5))}. Increase R2 or reduce R1.`,
-      );
-    c2 = (sum + Math.sqrt(Math.max(0, disc))) / 2;
-    c1 = p / c2;
+    const product = 1 / (w * w * r1 * r2),
+      damping = 1 / (w * q);
+    c2 = positiveQuadraticRoot(
+      r1 + r2 * (1 - gain),
+      -damping,
+      r1 * product,
+      gain === 1
+        ? `This Q needs R2/R1 ≥ ${Number((4 * q * q).toPrecision(5))}. Increase R2 or reduce R1.`
+        : 'This resistor ratio and gain cannot produce the requested Sallen–Key Q.',
+    );
+    c1 = product / c2;
   } else if (kind === 'lowpass') {
     positive(r3, 'R3');
     const sum = r2 + r3 + (r2 * r3) / r1;

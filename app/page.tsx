@@ -60,6 +60,8 @@ type Result = { stage?: Stage; target: Target; error?: string };
 const START = {
   kind: 'lowpass' as Kind,
   topology: 'sk' as Topology,
+  gain: '1',
+  rb: '10k',
   response: 'butterworth' as Response,
   order: 4,
   fc: '40',
@@ -187,12 +189,25 @@ function Reference({ x, y }: { x: number; y: number }) {
 function TopologyPreview({
   topology,
   kind,
+  gain,
+  rb,
 }: {
   topology: Topology;
   kind: Kind;
+  gain: string;
+  rb: string;
 }) {
   const lowpass = kind === 'lowpass';
   const name = `${topology === 'sk' ? 'Sallen–Key' : 'Multiple feedback'} ${lowpass ? 'low-pass' : 'high-pass'}`;
+  let gainNetwork = '';
+  try {
+    const k = parseValue(gain);
+    if (k < 1 || k > 100) throw new Error('Gain out of range');
+    const rbValue = parseValue(rb);
+    gainNetwork = `K = ${Number(k.toPrecision(5))}× · Rf = ${fmt((k - 1) * rbValue, 'Ω')} · Rb = ${fmt(rbValue, 'Ω')}`;
+  } catch {
+    gainNetwork = 'Enter a valid gain and Rb value.';
+  }
 
   return (
     <figure className="topology-preview">
@@ -203,10 +218,11 @@ function TopologyPreview({
       <svg
         className="topology-schematic"
         viewBox="0 0 270 170"
-        role="img"
-        aria-label={`${name} circuit topology preview`}
+        aria-labelledby="topology-preview-title"
       >
-        <title>{name} circuit topology preview</title>
+        <title id="topology-preview-title">
+          {name} circuit topology preview
+        </title>
         <text className="schematic-terminal" x="4" y="83">
           IN
         </text>
@@ -255,19 +271,24 @@ function TopologyPreview({
             />
             <path className="schematic-wire" d="M 140 22 H 238 V 80" />
 
+            <path className="schematic-wire" d="M 151 76 H 125" />
             <VerticalComponent
               kind={lowpass ? 'C' : 'R'}
               label={lowpass ? 'C2' : 'R2'}
-              x={151}
+              x={125}
               y={76}
             />
-            <path className="schematic-wire" d="M 151 115 V 142" />
-            <Reference x={151} y={149} />
+            <path className="schematic-wire" d="M 125 115 V 142" />
+            <Reference x={125} y={149} />
 
-            <path
-              className="schematic-wire"
-              d="M 172 96 H 162 V 130 H 238 V 80"
-            />
+            <path className="schematic-wire" d="M 172 96 H 160" />
+            <path className="schematic-wire" d="M 160 96 H 150" />
+            <VerticalComponent kind="R" label="Rb" x={150} y={96} />
+            <path className="schematic-wire" d="M 150 135 V 142" />
+            <Reference x={150} y={149} />
+            <path className="schematic-wire" d="M 160 96 V 130 H 174" />
+            <HorizontalComponent kind="R" label="Rf" x={174} y={130} />
+            <path className="schematic-wire" d="M 213 130 H 238 V 80" />
           </>
         ) : (
           <>
@@ -332,7 +353,11 @@ function TopologyPreview({
           </>
         )}
       </svg>
-      <p>Preview updates with filter type and topology.</p>
+      <p>
+        {topology === 'sk'
+          ? gainNetwork
+          : `Section gain is set by ${lowpass ? '−R2/R1' : '−C1/C2'}; MFB does not use Rf/Rb.`}
+      </p>
     </figure>
   );
 }
@@ -585,6 +610,18 @@ export default function Home() {
     ),
   );
   const [showHelp, setShowHelp] = useState(false);
+  const gainResult = useMemo(() => {
+    if (config.topology !== 'sk') return { gain: 1, rb: 0, rf: 0, error: '' };
+    try {
+      const gain = parseValue(config.gain);
+      if (gain < 1 || gain > 100)
+        throw new Error('Use a Sallen–Key section gain from 1 to 100.');
+      const rb = parseValue(config.rb);
+      return { gain, rb, rf: (gain - 1) * rb, error: '' };
+    } catch (e) {
+      return { gain: 1, rb: 0, rf: 0, error: (e as Error).message };
+    }
+  }, [config.gain, config.rb, config.topology]);
   const targetResult = useMemo(() => {
     try {
       return {
@@ -612,6 +649,7 @@ export default function Home() {
     () =>
       targetResult.targets.map((target, i) => {
         try {
+          if (gainResult.error) throw new Error(gainResult.error);
           const f =
             forms[i] ?? defaults(config.topology, config.kind, target.q);
           let values: Values = { r1: 0, r2: 0, r3: 0, c1: 0, c2: 0, c3: 0 };
@@ -629,6 +667,7 @@ export default function Home() {
               config.kind,
               target,
               values,
+              gainResult.gain,
             );
             for (const k of ['r1', 'r2', 'r3'] as const)
               if (values[k])
@@ -639,16 +678,22 @@ export default function Home() {
               config.kind,
               target,
               values,
+              gainResult.gain,
             );
           return {
             target,
-            stage: analyze(config.topology, config.kind, values),
+            stage: analyze(
+              config.topology,
+              config.kind,
+              values,
+              gainResult.gain,
+            ),
           };
         } catch (e) {
           return { target, error: (e as Error).message };
         }
       }),
-    [config, forms, mode, targetResult.targets],
+    [config, forms, gainResult, mode, targetResult.targets],
   );
   const allValid = results.length > 0 && results.every((r) => !!r.stage);
   const stages = useMemo(
@@ -729,11 +774,17 @@ export default function Home() {
     const target = targetResult.targets[index];
     const d = defaults(config.topology, config.kind, target.q);
     if (mode === 'capacitors') {
-      const v = solveResistors(config.topology, config.kind, target, {
-        c1: parseValue(d.c1),
-        c2: parseValue(d.c2),
-        c3: parseValue(d.c3),
-      });
+      const v = solveResistors(
+        config.topology,
+        config.kind,
+        target,
+        {
+          c1: parseValue(d.c1),
+          c2: parseValue(d.c2),
+          c3: parseValue(d.c3),
+        },
+        gainResult.gain,
+      );
       d.r1 = raw(v.r1);
       d.r2 = raw(v.r2);
       d.r3 = raw(v.r3 || 1);
@@ -751,6 +802,7 @@ export default function Home() {
           ? 'Crossover frequency (−6 dB)'
           : 'Cutoff frequency (−3 dB)';
   const fc = targetResult.targets.length ? parseValue(config.fc) : 40;
+  const setupError = targetResult.error || gainResult.error;
 
   return (
     <main className="workbench">
@@ -793,12 +845,48 @@ export default function Home() {
             label="Topology"
             value={config.topology}
             options={[
-              ['sk', 'Sallen–Key · unity gain'],
+              ['sk', 'Sallen–Key · adjustable gain'],
               ['mfb', 'Multiple feedback (MFB)'],
             ]}
             onChange={(v) => update('topology', v)}
           />
-          <TopologyPreview topology={config.topology} kind={config.kind} />
+          {config.topology === 'sk' && (
+            <>
+              <div className="field">
+                <label htmlFor="stage-gain">Gain per section (K)</label>
+                <Input
+                  id="stage-gain"
+                  value={config.gain}
+                  onChange={(e) => update('gain', e.target.value)}
+                  spellCheck={false}
+                  autoComplete="off"
+                  aria-invalid={!!gainResult.error}
+                />
+                <small>K = 1 + Rf/Rb; applied to every section.</small>
+              </div>
+              <div className="field">
+                <label htmlFor="gain-rb">Gain resistor Rb</label>
+                <div className="with-unit">
+                  <Input
+                    id="gain-rb"
+                    value={config.rb}
+                    onChange={(e) => update('rb', e.target.value)}
+                    spellCheck={false}
+                    autoComplete="off"
+                    aria-invalid={!!gainResult.error}
+                  />
+                  <span>Ω</span>
+                </div>
+                <small>Rf is calculated from K and Rb.</small>
+              </div>
+            </>
+          )}
+          <TopologyPreview
+            topology={config.topology}
+            kind={config.kind}
+            gain={config.gain}
+            rb={config.rb}
+          />
           <Choice
             id="response"
             label="Response"
@@ -921,9 +1009,10 @@ export default function Home() {
                 Each card is one second-order section. Connect section outputs
                 to the next section’s input. Component names are local to each
                 section; the connection labels define their positions. For
-                Sallen–Key, tie the op-amp − input to its output. For MFB, tie
-                the op-amp + input to the reference. Reference means AC ground,
-                which can be a well-buffered mid-supply bias.
+                Sallen–Key, Rf connects the output to the op-amp − input and Rb
+                connects that input to the reference, giving K = 1 + Rf/Rb. For
+                MFB, tie the op-amp + input to the reference. Reference means AC
+                ground, which can be a well-buffered mid-supply bias.
               </p>
               <p>
                 Butterworth and Bessel use the overall −3 dB cutoff.
@@ -983,9 +1072,9 @@ export default function Home() {
               </strong>
             </div>
           </div>
-          {targetResult.error ? (
+          {setupError ? (
             <div className="error-message" role="alert">
-              {targetResult.error}
+              {setupError}
             </div>
           ) : (
             <ResponsePlot
@@ -995,7 +1084,7 @@ export default function Home() {
               fc={fc}
             />
           )}
-          {!targetResult.error && (
+          {!setupError && (
             <div className="response-note">
               {config.response === 'custom'
                 ? 'Custom Q sets each section’s pole frequency. The overall −3 dB cutoff is calculated separately.'
@@ -1142,6 +1231,48 @@ export default function Home() {
                               </div>
                             );
                           })}
+                        {config.topology === 'sk' && group === 'r' && (
+                          <>
+                            <div className="component-field">
+                              <label htmlFor={`stage-${i}-rf`}>
+                                <b>Rf</b>
+                                <span>Output → op-amp −</span>
+                              </label>
+                              <div className="component-value calculated">
+                                <Input
+                                  id={`stage-${i}-rf`}
+                                  aria-label={`Section ${i + 1} Rf output to op-amp minus input`}
+                                  value={
+                                    gainResult.error
+                                      ? '—'
+                                      : fmt(gainResult.rf, 'Ω', 7)
+                                  }
+                                  readOnly
+                                />
+                                <small>(K − 1) × Rb</small>
+                              </div>
+                            </div>
+                            <div className="component-field">
+                              <label htmlFor={`stage-${i}-rb`}>
+                                <b>Rb</b>
+                                <span>Op-amp − → reference</span>
+                              </label>
+                              <div className="component-value calculated">
+                                <Input
+                                  id={`stage-${i}-rb`}
+                                  aria-label={`Section ${i + 1} Rb op-amp minus input to reference`}
+                                  value={
+                                    gainResult.error
+                                      ? '—'
+                                      : fmt(gainResult.rb, 'Ω', 7)
+                                  }
+                                  readOnly
+                                />
+                                <small>Sets gain with Rf</small>
+                              </div>
+                            </div>
+                          </>
+                        )}
                       </div>
                     ))}
                   </div>
