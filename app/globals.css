@@ -242,6 +242,88 @@ input {
   margin-bottom: 1.2rem;
   min-width: 0;
 }
+
+.topology-preview {
+  margin: -0.15rem 0 1.25rem;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.topology-preview-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.75rem 0.75rem 0.4rem;
+}
+
+.topology-preview-header strong {
+  color: var(--navy);
+  font-size: 0.82rem;
+  line-height: 1.25;
+}
+
+.topology-preview-header span {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--teal-soft);
+  color: var(--teal-dark);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0.35rem 0.45rem;
+}
+
+.topology-schematic {
+  display: block;
+  width: 100%;
+  height: auto;
+  color: var(--navy);
+}
+
+.schematic-wire,
+.schematic-component line,
+.schematic-component path,
+.schematic-opamp,
+.schematic-reference line {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.schematic-component text,
+.schematic-reference text,
+.schematic-terminal,
+.schematic-sign {
+  fill: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.schematic-sign {
+  fill: var(--navy);
+  font-size: 13px;
+}
+
+.schematic-node {
+  fill: var(--teal);
+}
+
+.schematic-opamp {
+  fill: white;
+}
+
+.topology-preview p {
+  margin: -0.25rem 0.75rem 0.7rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
 .field > label {
   font-size: 0.875rem;
   font-weight: 550;
@@ -776,6 +858,7 @@ input {
     border-bottom: 1px solid var(--border);
   }
   .setup .section-label,
+  .topology-preview,
   .setup-divider,
   .mode-note,
   .reset-button,

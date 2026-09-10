@@ -108,6 +108,235 @@ function Choice({
   );
 }
 
+function HorizontalComponent({
+  kind,
+  label,
+  x,
+  y,
+}: {
+  kind: 'R' | 'C';
+  label: string;
+  x: number;
+  y: number;
+}) {
+  return (
+    <g className="schematic-component">
+      <line x1={x} y1={y} x2={x + 8} y2={y} />
+      {kind === 'R' ? (
+        <path d={`M ${x + 8} ${y} l 4 -6 l 7 12 l 7 -12 l 7 12 l 4 -6`} />
+      ) : (
+        <>
+          <line x1={x + 18} y1={y - 9} x2={x + 18} y2={y + 9} />
+          <line x1={x + 27} y1={y - 9} x2={x + 27} y2={y + 9} />
+          <line x1={x + 8} y1={y} x2={x + 18} y2={y} />
+          <line x1={x + 27} y1={y} x2={x + 39} y2={y} />
+        </>
+      )}
+      <text x={x + 23} y={y - 12} textAnchor="middle">
+        {label}
+      </text>
+    </g>
+  );
+}
+
+function VerticalComponent({
+  kind,
+  label,
+  x,
+  y,
+}: {
+  kind: 'R' | 'C';
+  label: string;
+  x: number;
+  y: number;
+}) {
+  return (
+    <g className="schematic-component">
+      <line x1={x} y1={y} x2={x} y2={y + 8} />
+      {kind === 'R' ? (
+        <path d={`M ${x} ${y + 8} l -6 4 l 12 7 l -12 7 l 12 7 l -6 4`} />
+      ) : (
+        <>
+          <line x1={x - 9} y1={y + 18} x2={x + 9} y2={y + 18} />
+          <line x1={x - 9} y1={y + 27} x2={x + 9} y2={y + 27} />
+          <line x1={x} y1={y + 8} x2={x} y2={y + 18} />
+          <line x1={x} y1={y + 27} x2={x} y2={y + 39} />
+        </>
+      )}
+      <text x={x + 12} y={y + 27}>
+        {label}
+      </text>
+    </g>
+  );
+}
+
+function Reference({ x, y }: { x: number; y: number }) {
+  return (
+    <g className="schematic-reference">
+      <line x1={x} y1={y - 7} x2={x} y2={y} />
+      <line x1={x - 9} y1={y} x2={x + 9} y2={y} />
+      <line x1={x - 6} y1={y + 5} x2={x + 6} y2={y + 5} />
+      <line x1={x - 3} y1={y + 10} x2={x + 3} y2={y + 10} />
+      <text x={x + 14} y={y + 7}>
+        REF
+      </text>
+    </g>
+  );
+}
+
+function TopologyPreview({
+  topology,
+  kind,
+}: {
+  topology: Topology;
+  kind: Kind;
+}) {
+  const lowpass = kind === 'lowpass';
+  const name = `${topology === 'sk' ? 'Sallen–Key' : 'Multiple feedback'} ${lowpass ? 'low-pass' : 'high-pass'}`;
+
+  return (
+    <figure className="topology-preview">
+      <figcaption className="topology-preview-header">
+        <strong>{name}</strong>
+        <span>2nd-order section</span>
+      </figcaption>
+      <svg
+        className="topology-schematic"
+        viewBox="0 0 270 170"
+        role="img"
+        aria-label={`${name} circuit topology preview`}
+      >
+        <title>{name} circuit topology preview</title>
+        <text className="schematic-terminal" x="4" y="83">
+          IN
+        </text>
+        <text className="schematic-terminal" x="240" y="83">
+          OUT
+        </text>
+
+        {topology === 'sk' ? (
+          <>
+            <path className="schematic-wire" d="M 20 76 H 29" />
+            <HorizontalComponent
+              kind={lowpass ? 'R' : 'C'}
+              label={lowpass ? 'R1' : 'C1'}
+              x={29}
+              y={76}
+            />
+            <path className="schematic-wire" d="M 68 76 H 91" />
+            <circle className="schematic-node" cx="82" cy="76" r="3" />
+            <HorizontalComponent
+              kind={lowpass ? 'R' : 'C'}
+              label={lowpass ? 'R2' : 'C2'}
+              x={91}
+              y={76}
+            />
+            <path className="schematic-wire" d="M 130 76 H 169" />
+            <circle className="schematic-node" cx="151" cy="76" r="3" />
+
+            <path
+              className="schematic-opamp"
+              d="M 172 48 L 172 112 L 229 80 Z"
+            />
+            <text className="schematic-sign" x="176" y="72">
+              +
+            </text>
+            <text className="schematic-sign" x="176" y="101">
+              −
+            </text>
+            <path className="schematic-wire" d="M 229 80 H 250" />
+
+            <path className="schematic-wire" d="M 82 76 V 22 H 101" />
+            <HorizontalComponent
+              kind={lowpass ? 'C' : 'R'}
+              label={lowpass ? 'C1' : 'R1'}
+              x={101}
+              y={22}
+            />
+            <path className="schematic-wire" d="M 140 22 H 238 V 80" />
+
+            <VerticalComponent
+              kind={lowpass ? 'C' : 'R'}
+              label={lowpass ? 'C2' : 'R2'}
+              x={151}
+              y={76}
+            />
+            <path className="schematic-wire" d="M 151 115 V 142" />
+            <Reference x={151} y={149} />
+
+            <path
+              className="schematic-wire"
+              d="M 172 96 H 162 V 130 H 238 V 80"
+            />
+          </>
+        ) : (
+          <>
+            <path className="schematic-wire" d="M 20 80 H 29" />
+            <HorizontalComponent
+              kind={lowpass ? 'R' : 'C'}
+              label={lowpass ? 'R1' : 'C1'}
+              x={29}
+              y={80}
+            />
+            <path className="schematic-wire" d="M 68 80 H 91" />
+            <circle className="schematic-node" cx="82" cy="80" r="3" />
+            <HorizontalComponent
+              kind={lowpass ? 'R' : 'C'}
+              label={lowpass ? 'R3' : 'C3'}
+              x={91}
+              y={80}
+            />
+            <path className="schematic-wire" d="M 130 80 H 169" />
+            <circle className="schematic-node" cx="160" cy="80" r="3" />
+
+            <path
+              className="schematic-opamp"
+              d="M 172 52 L 172 116 L 229 84 Z"
+            />
+            <text className="schematic-sign" x="176" y="78">
+              −
+            </text>
+            <text className="schematic-sign" x="176" y="107">
+              +
+            </text>
+            <path className="schematic-wire" d="M 229 84 H 250" />
+
+            <path className="schematic-wire" d="M 82 80 V 22 H 101" />
+            <HorizontalComponent
+              kind={lowpass ? 'R' : 'C'}
+              label={lowpass ? 'R2' : 'C2'}
+              x={101}
+              y={22}
+            />
+            <path className="schematic-wire" d="M 140 22 H 238 V 84" />
+
+            <VerticalComponent
+              kind={lowpass ? 'C' : 'R'}
+              label={lowpass ? 'C2' : 'R2'}
+              x={82}
+              y={80}
+            />
+            <path className="schematic-wire" d="M 82 119 V 142" />
+            <Reference x={82} y={149} />
+
+            <path className="schematic-wire" d="M 172 104 H 160 V 130 H 174" />
+            <HorizontalComponent
+              kind={lowpass ? 'C' : 'R'}
+              label={lowpass ? 'C1' : 'R1'}
+              x={174}
+              y={130}
+            />
+            <path className="schematic-wire" d="M 213 130 H 238 V 84" />
+            <path className="schematic-wire" d="M 172 104 H 151 V 142" />
+            <Reference x={151} y={149} />
+          </>
+        )}
+      </svg>
+      <p>Preview updates with filter type and topology.</p>
+    </figure>
+  );
+}
+
 function ResponsePlot({
   targets,
   stages,
@@ -569,6 +798,7 @@ export default function Home() {
             ]}
             onChange={(v) => update('topology', v)}
           />
+          <TopologyPreview topology={config.topology} kind={config.kind} />
           <Choice
             id="response"
             label="Response"
